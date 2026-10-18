@@ -21,7 +21,6 @@ const client = new Client({
 let contadorMensajes = 0;
 const LIMITE_SPAWN = 25;
 
-// Lista completa de los 17 personajes de Swimmer's Fights
 const personajesSWF = [
     { 
         nombre: "Chispas", 
@@ -191,4 +190,4 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-client.login('MTU2MTExNDMyNDQyMzE1NTczMg.GDa2Q4.90wDRJdmSdEHoboZB2FjE4TNJBaK07IYRvqTok');
+client.login(process.env.DISCORD_TOKEN);
