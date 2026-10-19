@@ -227,181 +227,285 @@ client.on('messageCreate', async (message) => {
 
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.guild) return;
-    const userId = interaction.user.id;
+    const userId = String(interaction.user.id);
     const config = getConfig(interaction.guild.id);
 
     if (interaction.isChatInputCommand()) {
-        if (interaction.commandName === 'ayuda') {
-            const embedAyuda = new EmbedBuilder()
-                .setTitle('📖 Menú de Ayuda - SwF-Dex')
-                .setDescription('Lista de comandos disponibles para todos los usuarios y administradores:')
-                .addFields(
-                    { name: '🫧 Economía', value: '`/saldoburbujas` - Revisa tus burbujas\n`/regaloburbujas` - Regala burbujas\n`/recompensadiaria` - Recompensa diaria' },
-                    { name: '🛒 Tienda y Colección', value: '`/shop` - Abre la tienda limitada\n`/nextrestock` - Próximo restock\n`/inventario` - Tus personajes\n`/dex` - Lista de Swimmers\n`/progreso` - Mensajes para el siguiente spawn\n`/venderswimmer` - Vende un Swimmer' },
-                    { name: '⛏️ Minijuegos', value: '`/minas` - Minería de minerales\n`/ruleta` - Giro semanal' },
-                    { name: '⚙️ Administración', value: '`/config` - Configura el bot\n`/spawnswimmer` - Spawn manual' }
-                )
-                .setColor('#0099ff');
-            return await interaction.reply({ embeds: [embedAyuda] });
-        }
-
-        if (interaction.commandName === 'saldoburbujas') {
-            const saldo = balances[userId] || 0;
-            return await interaction.reply({ content: `🫧 Tienes **${saldo}** burbujas en tu cuenta.`, ephemeral: true });
-        }
-
-        if (interaction.commandName === 'regaloburbujas') {
-            const targetUser = interaction.options.getUser('user');
-            const cantidad = interaction.options.getInteger('cantidad');
-
-            if (targetUser.id === userId) {
-                return await interaction.reply({ content: "❌ No puedes regalarte burbujas a ti mismo.", ephemeral: true });
+        try {
+            if (interaction.commandName === 'ayuda') {
+                const embedAyuda = new EmbedBuilder()
+                    .setTitle('📖 Menú de Ayuda - SwF-Dex')
+                    .setDescription('Lista de comandos disponibles para todos los usuarios y administradores:')
+                    .addFields(
+                        { name: '🫧 Economía', value: '`/saldoburbujas` - Revisa tus burbujas\n`/regaloburbujas` - Regala burbujas\n`/recompensadiaria` - Recompensa diaria' },
+                        { name: '🛒 Tienda y Colección', value: '`/shop` - Abre la tienda limitada\n`/nextrestock` - Próximo restock\n`/inventario` - Tus personajes\n`/dex` - Lista de Swimmers\n`/progreso` - Mensajes para el siguiente spawn\n`/venderswimmer` - Vende un Swimmer' },
+                        { name: '⛏️ Minijuegos', value: '`/minas` - Minería de minerales\n`/ruleta` - Giro semanal' },
+                        { name: '⚙️ Administración', value: '`/config` - Configura el bot\n`/spawnswimmer` - Spawn manual' }
+                    )
+                    .setColor('#0099ff');
+                return await interaction.reply({ embeds: [embedAyuda] });
             }
 
-            const saldoActual = balances[userId] || 0;
-            if (saldoActual < cantidad) {
-                return await interaction.reply({ content: `❌ No tienes suficientes burbujas. Tu saldo es **${saldoActual}** 🫧.`, ephemeral: true });
+            if (interaction.commandName === 'saldoburbujas') {
+                const saldo = balances[userId] || 0;
+                return await interaction.reply({ content: `🫧 Tienes **${saldo}** burbujas en tu cuenta.`, ephemeral: true });
             }
 
-            balances[userId] -= cantidad;
-            balances[targetUser.id] = (balances[targetUser.id] || 0) + cantidad;
+            if (interaction.commandName === 'regaloburbujas') {
+                const targetUser = interaction.options.getUser('user');
+                const cantidad = interaction.options.getInteger('cantidad');
+                const targetId = String(targetUser.id);
 
-            return await interaction.reply(`🎁 Has regalado **${cantidad}** 🫧 a ${targetUser}.`);
-        }
+                if (targetId === userId) {
+                    return await interaction.reply({ content: "❌ No puedes regalarte burbujas a ti mismo.", ephemeral: true });
+                }
 
-        if (interaction.commandName === 'recompensadiaria') {
-            const ahora = Date.now();
-            const ultimoUso = cooldowns.diario[userId] || 0;
-            const unDia = 24 * 3600 * 1000;
+                const saldoActual = balances[userId] || 0;
+                if (saldoActual < cantidad) {
+                    return await interaction.reply({ content: `❌ No tienes suficientes burbujas. Tu saldo es **${saldoActual}** 🫧.`, ephemeral: true });
+                }
 
-            if (ahora - ultimoUso < unDia) {
-                const restante = Math.ceil((unDia - (ahora - ultimoUso)) / 3600000);
-                return await interaction.reply({ content: `⏳ Ya reclamaste tu recompensa hoy. Vuelve en **${restante}** hora(s).`, ephemeral: true });
+                balances[userId] = saldoActual - cantidad;
+                balances[targetId] = (balances[targetId] || 0) + cantidad;
+
+                return await interaction.reply(`🎁 Has regalado **${cantidad}** 🫧 a ${targetUser}.`);
             }
 
-            const recompensa = Math.floor(Math.random() * 91) + 10;
-            balances[userId] = (balances[userId] || 0) + recompensa;
-            cooldowns.diario[userId] = ahora;
+            if (interaction.commandName === 'recompensadiaria') {
+                const ahora = Date.now();
+                const ultimoUso = cooldowns.diario[userId] || 0;
+                const unDia = 24 * 3600 * 1000;
 
-            return await interaction.reply(`🎉 ¡Has reclamado tu recompensa diaria y recibido **${recompensa}** 🫧!`);
-        }
+                if (ahora - ultimoUso < unDia) {
+                    const restante = Math.ceil((unDia - (ahora - ultimoUso)) / 3600000);
+                    return await interaction.reply({ content: `⏳ Ya reclamaste tu recompensa hoy. Vuelve en **${restante}** hora(s).`, ephemeral: true });
+                }
 
-        if (interaction.commandName === 'shop') {
-            const tiempoRestanteMs = tiendaActual.timestampProximo - Date.now();
-            const horasRestantes = Math.floor(tiempoRestanteMs / 3600000);
-            const minutosRestantes = Math.floor((tiempoRestanteMs % 3600000) / 60000);
+                const recompensa = Math.floor(Math.random() * 91) + 10;
+                balances[userId] = (balances[userId] || 0) + recompensa;
+                cooldowns.diario[userId] = ahora;
 
-            const embed = new EmbedBuilder()
-                .setTitle(`Limited Shop (Reinicio en ${horasRestantes}h ${minutosRestantes}m)`)
-                .setColor('#0099ff');
+                return await interaction.reply(`🎉 ¡Has reclamado tu recompensa diaria y recibido **${recompensa}** 🫧!`);
+            }
 
-            const row = new ActionRowBuilder();
-            tiendaActual.items.forEach((item, index) => {
-                embed.addFields({ name: `${item.nombre} (${item.raridad})`, value: `Precio: **${item.valor}** 🫧\nStock: **${item.stock}**`, inline: true });
-                row.addComponents(
-                    new ButtonBuilder()
-                        .setCustomId(`comprar_item_${index}`)
-                        .setLabel(`Comprar ${item.nombre}`)
-                        .setStyle(ButtonStyle.Success)
-                        .setDisabled(item.stock <= 0)
+            if (interaction.commandName === 'dex') {
+                const listaDex = personajesSWF.map(p => `• **${p.nombre}** (${p.raridad})`).join('\n');
+                const embed = new EmbedBuilder().setTitle('SwF-Dex - Coleccionables').setDescription(listaDex).setColor('#0099ff');
+                return await interaction.reply({ embeds: [embed] });
+            }
+
+            if (interaction.commandName === 'inventario') {
+                const lista = inventarios[userId];
+                if (!lista || lista.length === 0) {
+                    return await interaction.reply({ content: "Todavía no has atrapado ningún Swimmer.", ephemeral: true });
+                }
+                const conteo = {};
+                lista.forEach(p => { conteo[p.nombre] = (conteo[p.nombre] || 0) + 1; });
+                const texto = Object.entries(conteo).map(([nombre, cant]) => `• **${nombre}** x${cant}`).join('\n');
+
+                const embed = new EmbedBuilder().setTitle(`Inventario de ${interaction.user.username}`).setDescription(texto).setColor('#00ff88');
+                return await interaction.reply({ embeds: [embed] });
+            }
+
+            if (interaction.commandName === 'progreso') {
+                if (config.modo === 'tiempo') {
+                    return await interaction.reply({ content: "El servidor está configurado en **Modo Tiempo** aleatorio.", ephemeral: true });
+                }
+                return await interaction.reply({ content: `Progreso: **${config.contadorActual}/${config.limiteMensajes}** mensajes.`, ephemeral: true });
+            }
+
+            if (interaction.commandName === 'shop') {
+                const tiempoRestanteMs = tiendaActual.timestampProximo - Date.now();
+                const horasRestantes = Math.floor(tiempoRestanteMs / 3600000);
+                const minutosRestantes = Math.floor((tiempoRestanteMs % 3600000) / 60000);
+
+                const embed = new EmbedBuilder()
+                    .setTitle(`Limited Shop (Reinicio en ${horasRestantes}h ${minutosRestantes}m)`)
+                    .setColor('#0099ff');
+
+                const row = new ActionRowBuilder();
+                tiendaActual.items.forEach((item, index) => {
+                    embed.addFields({ name: `${item.nombre} (${item.raridad})`, value: `Precio: **${item.valor}** 🫧\nStock: **${item.stock}**`, inline: true });
+                    row.addComponents(
+                        new ButtonBuilder()
+                            .setCustomId(`comprar_item_${index}`)
+                            .setLabel(`Comprar ${item.nombre}`)
+                            .setStyle(ButtonStyle.Success)
+                            .setDisabled(item.stock <= 0)
+                    );
+                });
+
+                return await interaction.reply({ embeds: [embed], components: [row] });
+            }
+
+            if (interaction.commandName === 'nextrestock') {
+                const tiempoRestanteMs = tiendaActual.timestampProximo - Date.now();
+                const horasRestantes = tiempoRestanteMs / 3600000;
+
+                if (horasRestantes > 5) {
+                    return await interaction.reply({ content: "⏳ Este comando solo funciona cuando faltan **5 horas o menos** para el siguiente restock.", ephemeral: true });
+                }
+
+                const embed = new EmbedBuilder()
+                    .setTitle("🔮 Próximo Restock de la Tienda")
+                    .setColor('#ffaa00');
+
+                tiendaActual.proximoRestock.forEach(item => {
+                    embed.addFields({ name: `${item.nombre} (${item.raridad})`, value: `Valor: **${item.valor}** 🫧 | Stock: **${item.stock}**`, inline: true });
+                });
+
+                return await interaction.reply({ embeds: [embed], ephemeral: true });
+            }
+
+            if (interaction.commandName === 'minas') {
+                const ahora = Date.now();
+                const ultimoUso = cooldowns.minas[userId] || 0;
+                const cooldownMs = 10 * 3600 * 1000;
+
+                if (ahora - ultimoUso < cooldownMs) {
+                    const horas = Math.ceil((cooldownMs - (ahora - ultimoUso)) / 3600000);
+                    return await interaction.reply({ content: `⏳ Tus picos están cansados. Vuelve a minar en **${horas}** hora(s).`, ephemeral: true });
+                }
+
+                cooldowns.minas[userId] = ahora;
+
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId('btn_minar').setLabel('⛏️ ¡Minar (0/75 clicks)!').setStyle(ButtonStyle.Primary)
                 );
-            });
 
-            return await interaction.reply({ embeds: [embed], components: [row] });
-        }
+                client.sesionesMinas = client.sesionesMinas || {};
+                client.sesionesMinas[userId] = { clicks: 0, ultimosMinerales: [] };
 
-        if (interaction.commandName === 'nextrestock') {
-            const tiempoRestanteMs = tiendaActual.timestampProximo - Date.now();
-            const horasRestantes = tiempoRestanteMs / 3600000;
-
-            if (horasRestantes > 5) {
-                return await interaction.reply({ content: "⏳ Este comando solo funciona cuando faltan **5 horas o menos** para el siguiente restock.", ephemeral: true });
+                return await interaction.reply({ content: "⛏️ **¡Sesión de minería iniciada!** Haz clic en el botón de abajo hasta completar los 75 clicks.", components: [row], ephemeral: true });
             }
 
-            const embed = new EmbedBuilder()
-                .setTitle("🔮 Próximo Restock de la Tienda")
-                .setColor('#ffaa00');
+            if (interaction.commandName === 'ruleta') {
+                const ahora = Date.now();
+                const ultimoUso = cooldowns.ruleta[userId] || 0;
+                const cooldownRuleta = 7 * 24 * 3600 * 1000;
 
-            tiendaActual.proximoRestock.forEach(item => {
-                embed.addFields({ name: `${item.nombre} (${item.raridad})`, value: `Valor: **${item.valor}** 🫧 | Stock: **${item.stock}**`, inline: true });
-            });
+                if (ahora - ultimoUso < cooldownRuleta) {
+                    return await interaction.reply({ content: "⏳ La ruleta solo se puede girar una vez cada **7 días**.", ephemeral: true });
+                }
 
-            return await interaction.reply({ embeds: [embed], ephemeral: true });
-        }
+                cooldowns.ruleta[userId] = ahora;
 
-        if (interaction.commandName === 'minas') {
-            const ahora = Date.now();
-            const ultimoUso = cooldowns.minas[userId] || 0;
-            const cooldownMs = 10 * 3600 * 1000;
+                const premios = [
+                    { emoji: "🔴", desc: "+10% de suerte en /Minar por 1 día", tipo: "suerte" },
+                    { emoji: "🔶", desc: "500 Burbujas", tipo: "burbujas", valor: 500 },
+                    { emoji: "⭐", desc: "Personaje raro aleatorio", tipo: "swimmer", raridad: "Raro" },
+                    { emoji: "💚", desc: "750 Burbujas", tipo: "burbujas", valor: 750 },
+                    { emoji: "🌀", desc: "Personaje épico aleatorio", tipo: "swimmer", raridad: "Épico" },
+                    { emoji: "💷", desc: "1250 Burbujas", tipo: "burbujas", valor: 1250 }
+                ];
 
-            if (ahora - ultimoUso < cooldownMs) {
-                const horas = Math.ceil((cooldownMs - (ahora - ultimoUso)) / 3600000);
-                return await interaction.reply({ content: `⏳ Tus picos están cansados. Vuelve a minar en **${horas}** hora(s).`, ephemeral: true });
+                const premioGana = premios[Math.floor(Math.random() * premios.length)];
+                let textoPremio = premioGana.desc;
+
+                if (premioGana.tipo === 'burbujas') {
+                    balances[userId] = (balances[userId] || 0) + premioGana.valor;
+                } else if (premioGana.tipo === 'swimmer') {
+                    const filtrados = personajesSWF.filter(p => p.raridad === premioGana.raridad);
+                    const ganado = filtrados[Math.floor(Math.random() * filtrados.length)];
+                    if (!inventarios[userId]) inventarios[userId] = [];
+                    inventarios[userId].push(ganado);
+                    textoPremio += ` (**${ganado.nombre}**)`;
+                } else if (premioGana.tipo === 'suerte') {
+                    buffsSuerte[userId] = ahora + 24 * 3600 * 1000;
+                }
+
+                return await interaction.reply(`🎰 ¡La ruleta giró y cayó en **${premioGana.emoji}**! Premio obtenido: **${textoPremio}**.`);
             }
 
-            cooldowns.minas[userId] = ahora;
+            if (interaction.commandName === 'venderswimmer') {
+                const nombreTarget = interaction.options.getString('swimmer');
+                const lista = inventarios[userId] || [];
+                const index = lista.findIndex(p => p.nombre.toLowerCase() === nombreTarget.toLowerCase());
 
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('btn_minar').setLabel('⛏️ ¡Minar (0/75 clicks)!').setStyle(ButtonStyle.Primary)
-            );
+                if (index === -1) {
+                    return await interaction.reply({ content: "❌ No tienes ese Swimmer en tu inventario.", ephemeral: true });
+                }
 
-            client.sesionesMinas = client.sesionesMinas || {};
-            client.sesionesMinas[userId] = { clicks: 0, ultimosMinerales: [] };
+                const swimmerVendido = lista.splice(index, 1)[0];
+                const valorVenta = Math.floor(swimmerVendido.valor * 0.75);
+                balances[userId] = (balances[userId] || 0) + valorVenta;
 
-            return await interaction.reply({ content: "⛏️ **¡Sesión de minería iniciada!** Haz clic en el botón de abajo hasta completar los 75 clicks.", components: [row], ephemeral: true });
-        }
-if (interaction.commandName === 'ruleta') {
-            const ahora = Date.now();
-            const ultimoUso = cooldowns.ruleta[userId] || 0;
-            const cooldownRuleta = 7 * 24 * 3600 * 1000;
-
-            if (ahora - ultimoUso < cooldownRuleta) {
-                return await interaction.reply({ content: "⏳ La ruleta solo se puede girar una vez cada **7 días**.", ephemeral: true });
+                return await interaction.reply(`💰 Has vendido a **${swimmerVendido.nombre}** por **${valorVenta}** 🫧 (75% de su valor).`);
             }
 
-            cooldowns.ruleta[userId] = ahora;
+            if (interaction.commandName === 'spawnswimmer') {
+                await interaction.deferReply({ ephemeral: true });
 
-            const premios = [
-                { emoji: "🔴", desc: "+10% de suerte en /Minar por 1 día", tipo: "suerte" },
-                { emoji: "🔶", desc: "500 Burbujas", tipo: "burbujas", valor: 500 },
-                { emoji: "⭐", desc: "Personaje raro aleatorio", tipo: "swimmer", raridad: "Raro" },
-                { emoji: "💚", desc: "750 Burbujas", tipo: "burbujas", valor: 750 },
-                { emoji: "🌀", desc: "Personaje épico aleatorio", tipo: "swimmer", raridad: "Épico" },
-                { emoji: "💷", desc: "1250 Burbujas", tipo: "burbujas", valor: 1250 }
-            ];
+                const nombreTarget = interaction.options.getString('swimmer');
+                const cantidad = interaction.options.getInteger('amount') || 1;
 
-            const premioGana = premios[Math.floor(Math.random() * premios.length)];
-            let textoPremio = premioGana.desc;
+                const personajeSeleccionado = personajesSWF.find(p => p.nombre.toLowerCase() === nombreTarget.toLowerCase());
+                if (!personajeSeleccionado) {
+                    return await interaction.editReply({ content: "❌ Swimmer no encontrado." });
+                }
 
-            if (premioGana.tipo === 'burbujas') {
-                balances[userId] = (balances[userId] || 0) + premioGana.valor;
-            } else if (premioGana.tipo === 'swimmer') {
-                const filtrados = personajesSWF.filter(p => p.raridad === premioGana.raridad);
-                const ganado = filtrados[Math.floor(Math.random() * filtrados.length)];
-                if (!inventarios[userId]) inventarios[userId] = [];
-                inventarios[userId].push(ganado);
-                textoPremio += ` (**${ganado.nombre}**)`;
-            } else if (premioGana.tipo === 'suerte') {
-                buffsSuerte[userId] = ahora + 24 * 3600 * 1000;
+                await interaction.editReply({ content: `✅ Generando **${cantidad}** aparición(es) de **${personajeSeleccionado.nombre}**...` });
+
+                for (let i = 0; i < cantidad; i++) {
+                    await lanzarSwimmerEspecifico(interaction.channel, personajeSeleccionado);
+                    if (i < cantidad - 1) {
+                        await new Promise(resolve => setTimeout(resolve, 1500));
+                    }
+                }
+                return;
             }
 
-            return await interaction.reply(`🎰 ¡La ruleta giró y cayó en **${premioGana.emoji}**! Premio obtenido: **${textoPremio}**.`);
-        }
+            if (interaction.commandName === 'config') {
+                await interaction.deferReply({ ephemeral: true });
 
-        if (interaction.commandName === 'venderswimmer') {
-            const nombreTarget = interaction.options.getString('swimmer');
-            const lista = inventarios[userId] || [];
-            const index = lista.findIndex(p => p.nombre.toLowerCase() === nombreTarget.toLowerCase());
+                const subcommandGroup = interaction.options.getSubcommandGroup(false);
+                const subcommand = interaction.options.getSubcommand();
 
-            if (index === -1) {
-                return await interaction.reply({ content: "❌ No tienes ese Swimmer en tu inventario.", ephemeral: true });
+                if (subcommand === 'mode') {
+                    const nuevoModo = interaction.options.getString('mode');
+                    config.modo = nuevoModo;
+                    return await interaction.editReply({ content: `✅ Modo actualizado a: **${nuevoModo === 'mensajes' ? 'Modo Mensaje' : 'Modo Tiempo'}**` });
+                }
+
+                if (subcommand === 'messages') {
+                    const cantidad = interaction.options.getInteger('messages');
+                    config.limiteMensajes = cantidad;
+                    return await interaction.editReply({ content: `✅ Límite de mensajes actualizado a: **${cantidad}**` });
+                }
+
+                if (subcommand === 'randomtime') {
+                    const min = interaction.options.getInteger('minortime');
+                    const max = interaction.options.getInteger('mayortime');
+
+                    if (min >= max) {
+                        return await interaction.editReply({ content: "❌ El tiempo mínimo debe ser menor al tiempo máximo." });
+                    }
+
+                    config.tiempoMin = min;
+                    config.tiempoMax = max;
+                    return await interaction.editReply({ content: `✅ Rango de tiempo configurado: **${min}s** a **${max}s**.` });
+                }
+
+                if (subcommandGroup === 'zone') {
+                    const rawChannels = interaction.options.getString('channel');
+                    const idsExtraidas = rawChannels.match(/<#(\d+)>/g)?.map(id => id.replace(/[<#>]/g, '')) || [];
+
+                    if (subcommand === 'approved') {
+                        config.canalesPermitidos = idsExtraidas;
+                        return await interaction.editReply({ content: `✅ Canales autorizados guardados (${idsExtraidas.length} detectados).` });
+                    }
+
+                    if (subcommand === 'denied') {
+                        config.canalesBloqueados = idsExtraidas;
+                        return await interaction.editReply({ content: `✅ Canales denegados guardados (${idsExtraidas.length} detectados).` });
+                    }
+                }
             }
-
-            const swimmerVendido = lista.splice(index, 1)[0];
-            const valorVenta = Math.floor(swimmerVendido.valor * 0.75);
-            balances[userId] = (balances[userId] || 0) + valorVenta;
-
-            return await interaction.reply(`💰 Has vendido a **${swimmerVendido.nombre}** por **${valorVenta}** 🫧 (75% de su valor).`);
+        } catch (err) {
+            console.error("Error ejecutando comando:", err);
+            if (!interaction.replied && !interaction.deferred) {
+                await interaction.reply({ content: "❌ Ocurrió un error al procesar este comando.", ephemeral: true });
+            }
         }
     }
 
