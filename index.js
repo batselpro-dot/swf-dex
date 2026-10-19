@@ -11,7 +11,8 @@ const {
     REST,
     Routes,
     SlashCommandBuilder,
-    PermissionFlagsBits
+    PermissionFlagsBits,
+    ChannelType
 } = require('discord.js');
 const http = require('http');
 
@@ -46,27 +47,25 @@ const personajesSWF = [
 const configsPorServidor = {};
 const inventarios = {};
 let personajeActual = null;
-let canalUltimoSpawn = null;
 
 function getConfig(guildId) {
     if (!configsPorServidor[guildId]) {
         configsPorServidor[guildId] = {
-            modo: 'mensajes', // 'mensajes' o 'tiempo'
+            modo: 'mensajes',
             limiteMensajes: 25,
             contadorActual: 0,
-            tiempoMin: 30, // segundos
-            tiempoMax: 36000, // 10 horas en segundos
-            canalesPermitidos: [], // Si está vacío, permite todos excepto los bloqueados
+            tiempoMin: 30,
+            tiempoMax: 3600,
+            canalesPermitidos: [],
             canalesBloqueados: []
         };
     }
     return configsPorServidor[guildId];
 }
 
-async function lanzarSwimmer(channel) {
+async function lanzarSwimmerEspecifico(channel, personaje) {
     if (!channel) return;
-    personajeActual = personajesSWF[Math.floor(Math.random() * personajesSWF.length)];
-    canalUltimoSpawn = channel.id;
+    personajeActual = personaje || personajesSWF[Math.floor(Math.random() * personajesSWF.length)];
 
     const embedSpawn = new EmbedBuilder()
         .setTitle("¡Un nuevo Swimmer ha aparecido!")
@@ -87,12 +86,82 @@ const commands = [
     new SlashCommandBuilder().setName('inventario').setDescription('Muestra tus Swimmers atrapados'),
     new SlashCommandBuilder().setName('dex').setDescription('Muestra la lista de todos los Swimmers disponibles'),
     new SlashCommandBuilder().setName('progreso').setDescription('Muestra cuántos mensajes van para el siguiente personaje'),
+    
+    // Comando /spawnswimmer
+    new SlashCommandBuilder()
+        .setName('spawnswimmer')
+        .setDescription('Comando de moderación para aparecer Swimmers manualmente')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+        .addStringOption(opt =>
+            opt.setName('swimmer')
+                .setDescription('Swimmer a aparecer')
+                .setRequired(true)
+                .addChoices(...personajesSWF.map(p => ({ name: p.nombre, value: p.nombre })))
+        )
+        .addIntegerOption(opt =>
+            opt.setName('amount')
+                .setDescription('Cantidad de veces que aparecerá (Opcional)')
+                .setRequired(false)
+        ),
+
+    // Comando /config con subcomandos
     new SlashCommandBuilder()
         .setName('config')
-        .setDescription('Comandos de configuración para administradores')
+        .setDescription('Configuración del bot para administradores')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
         .addSubcommand(sub =>
-            sub.setName('me').setDescription('Abre el panel completo de configuración del bot')
+            sub.setName('mode')
+                .setDescription('Cambia el modo de aparición')
+                .addStringOption(opt =>
+                    opt.setName('mode')
+                        .setDescription('Selecciona el modo')
+                        .setRequired(true)
+                        .addChoices(
+                            { name: 'Modo Mensaje', value: 'mensajes' },
+                            { name: 'Modo Tiempo', value: 'tiempo' }
+                        )
+                )
+        )
+        .addSubcommand(sub =>
+            sub.setName('messages')
+                .setDescription('Define la cantidad de mensajes entre spawns (10-100)')
+                .addIntegerOption(opt =>
+                    opt.setName('messages')
+                        .setDescription('Cantidad de mensajes (10-100)')
+                        .setRequired(true)
+                        .setMinValue(10)
+                        .setMaxValue(100)
+                )
+        )
+        .addSubcommand(sub =>
+            sub.setName('randomtime')
+                .setDescription('Define el rango de tiempo aleatorio para apariciones')
+                .addIntegerOption(opt =>
+                    opt.setName('minortime')
+                        .setDescription('Tiempo mínimo en segundos (mínimo 30s)')
+                        .setRequired(true)
+                        .setMinValue(30)
+                )
+                .addIntegerOption(opt =>
+                    opt.setName('mayortime')
+                        .setDescription('Tiempo máximo en segundos (máximo 3600s / 1 hora)')
+                        .setRequired(true)
+                        .setMaxValue(3600)
+                )
+        )
+        .addSubcommandGroup(group =>
+            group.setName('zone')
+                .setDescription('Configura zonas/canales permitidos o denegados')
+                .addSubcommand(sub =>
+                    sub.setName('approved')
+                        .setDescription('Canales donde SÍ puede aparecer el bot (separados por coma)')
+                        .addStringOption(opt => opt.setName('channel').setDescription('Ejemplo: #general, #chat-bot').setRequired(true))
+                )
+                .addSubcommand(sub =>
+                    sub.setName('denied')
+                        .setDescription('Canales donde NO puede aparecer el bot (separados por coma)')
+                        .addStringOption(opt => opt.setName('channel').setDescription('Ejemplo: #reglas, #anuncios').setRequired(true))
+                )
         )
 ].map(command => command.toJSON());
 
@@ -101,7 +170,7 @@ client.on('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
         await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log('Comandos registrados correctamente.');
+        console.log('Comandos e interacciones en barra registrados correctamente.');
     } catch (error) {
         console.error(error);
     }
@@ -112,7 +181,6 @@ client.on('messageCreate', async (message) => {
 
     const config = getConfig(message.guild.id);
 
-    // Verificar filtros de canales
     if (config.canalesBloqueados.includes(message.channel.id)) return;
     if (config.canalesPermitidos.length > 0 && !config.canalesPermitidos.includes(message.channel.id)) return;
 
@@ -120,7 +188,7 @@ client.on('messageCreate', async (message) => {
         config.contadorActual++;
         if (config.contadorActual >= config.limiteMensajes) {
             config.contadorActual = 0;
-            await lanzarSwimmer(message.channel);
+            await lanzarSwimmerEspecifico(message.channel, null);
         }
     }
 });
@@ -157,96 +225,92 @@ client.on('interactionCreate', async (interaction) => {
             return await interaction.reply({ content: `Progreso: **${config.contadorActual}/${config.limiteMensajes}** mensajes.`, ephemeral: true });
         }
 
-        if (interaction.commandName === 'config' && interaction.options.getSubcommand() === 'me') {
-            const embedConfig = new EmbedBuilder()
-                .setTitle('⚙️ Panel de Configuración - SwF-Dex')
-                .setDescription('Configura el comportamiento del bot en este servidor desde los botones inferiores:')
-                .addFields(
-                    { name: 'Modo de Aparición', value: config.modo.toUpperCase(), inline: true },
-                    { name: 'Límite de Mensajes', value: `${config.limiteMensajes}`, inline: true },
-                    { name: 'Rango de Tiempo (Aleatorio)', value: `${config.tiempoMin}s - ${config.tiempoMax}s`, inline: true }
-                )
-                .setColor('#ffaa00');
+        if (interaction.commandName === 'spawnswimmer') {
+            const nombreTarget = interaction.options.getString('swimmer');
+            const cantidad = interaction.options.getInteger('amount') || 1;
 
-            const row1 = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('cfg_cambiar_modo').setLabel('Cambiar Modo (Msjs/Tiempo)').setStyle(ButtonStyle.Secondary),
-                new ButtonBuilder().setCustomId('cfg_editar_limite').setLabel('Editar Límite Mensajes').setStyle(ButtonStyle.Primary),
-                new ButtonBuilder().setCustomId('cfg_editar_tiempo').setLabel('Configurar Tiempos (30s - 10h)').setStyle(ButtonStyle.Primary)
-            );
+            const personajeSeleccionado = personajesSWF.find(p => p.nombre.toLowerCase() === nombreTarget.toLowerCase());
+            if (!personajeSeleccionado) {
+                return await interaction.reply({ content: "❌ Swimmer no encontrado.", ephemeral: true });
+            }
 
-            return await interaction.reply({ embeds: [embedConfig], components: [row1], ephemeral: true });
+            await interaction.reply({ content: `✅ Generando **${cantidad}** aparición(es) de **${personajeSeleccionado.nombre}**...`, ephemeral: true });
+
+            for (let i = 0; i < cantidad; i++) {
+                await lanzarSwimmerEspecifico(interaction.channel, personajeSeleccionado);
+            }
+            return;
+        }
+
+        if (interaction.commandName === 'config') {
+            const subcommandGroup = interaction.options.getSubcommandGroup(false);
+            const subcommand = interaction.options.getSubcommand();
+
+            if (subcommand === 'mode') {
+                const nuevoModo = interaction.options.getString('mode');
+                config.modo = nuevoModo;
+                return await interaction.reply({ content: `✅ Modo actualizado a: **${nuevoModo === 'mensajes' ? 'Modo Mensaje' : 'Modo Tiempo'}**`, ephemeral: true });
+            }
+
+            if (subcommand === 'messages') {
+                const cantidad = interaction.options.getInteger('messages');
+                config.limiteMensajes = cantidad;
+                return await interaction.reply({ content: `✅ Límite de mensajes actualizado a: **${cantidad}**`, ephemeral: true });
+            }
+
+            if (subcommand === 'randomtime') {
+                const min = interaction.options.getInteger('minortime');
+                const max = interaction.options.getInteger('mayortime');
+
+                if (min >= max) {
+                    return await interaction.reply({ content: "❌ El tiempo mínimo debe ser menor al tiempo máximo.", ephemeral: true });
+                }
+
+                config.tiempoMin = min;
+                config.tiempoMax = max;
+                return await interaction.reply({ content: `✅ Rango de tiempo configurado: **${min}s** a **${max}s**.`, ephemeral: true });
+            }
+
+            if (subcommandGroup === 'zone') {
+                const rawChannels = interaction.options.getString('channel');
+                const idsExtraidas = rawChannels.match(/<#(\d+)>/g)?.map(id => id.replace(/[<#>]/g, '')) || [];
+
+                if (subcommand === 'approved') {
+                    config.canalesPermitidos = idsExtraidas;
+                    return await interaction.reply({ content: `✅ Canales autorizados guardados (${idsExtraidas.length} detectados).`, ephemeral: true });
+                }
+
+                if (subcommand === 'denied') {
+                    config.canalesBloqueados = idsExtraidas;
+                    return await interaction.reply({ content: `✅ Canales denegados guardados (${idsExtraidas.length} detectados).`, ephemeral: true });
+                }
+            }
         }
     }
 
-    if (interaction.isButton()) {
-        if (interaction.customId === 'btn_catch') {
-            if (!personajeActual) {
-                return await interaction.reply({ content: "Este Swimmer ya fue atrapado o desapareció.", ephemeral: true });
-            }
-            const modal = new ModalBuilder().setCustomId('modal_catch').setTitle('¡Atrapa al Swimmer!');
-            const campoNombre = new TextInputBuilder().setCustomId('input_nombre').setLabel("¿Cuál es el nombre de este Swimmer?").setStyle(TextInputStyle.Short).setRequired(true);
-            modal.addComponents(new ActionRowBuilder().addComponents(campoNombre));
-            return await interaction.showModal(modal);
+    if (interaction.isButton() && interaction.customId === 'btn_catch') {
+        if (!personajeActual) {
+            return await interaction.reply({ content: "Este Swimmer ya fue atrapado o desapareció.", ephemeral: true });
         }
-
-        if (interaction.customId === 'cfg_cambiar_modo') {
-            config.modo = config.modo === 'mensajes' ? 'tiempo' : 'mensajes';
-            return await interaction.update({ content: `✅ Modo cambiado exitosamente a: **${config.modo.toUpperCase()}**`, components: [] });
-        }
-
-        if (interaction.customId === 'cfg_editar_limite') {
-            const modal = new ModalBuilder().setCustomId('modal_limite').setTitle('Configurar Límite de Mensajes');
-            const input = new TextInputBuilder().setCustomId('input_limite_mensajes').setLabel('Cantidad de mensajes para spawn:').setStyle(TextInputStyle.Short).setValue(config.limiteMensajes.toString()).setRequired(true);
-            modal.addComponents(new ActionRowBuilder().addComponents(input));
-            return await interaction.showModal(modal);
-        }
-
-        if (interaction.customId === 'cfg_editar_tiempo') {
-            const modal = new ModalBuilder().setCustomId('modal_tiempo').setTitle('Configurar Rango de Tiempo (Segundos)');
-            const inputMin = new TextInputBuilder().setCustomId('input_t_min').setLabel('Mínimo en segundos (Mín. 30)').setStyle(TextInputStyle.Short).setValue(config.tiempoMin.toString()).setRequired(true);
-            const inputMax = new TextInputBuilder().setCustomId('input_t_max').setLabel('Máximo en segundos (Máx. 36000)').setStyle(TextInputStyle.Short).setValue(config.tiempoMax.toString()).setRequired(true);
-            modal.addComponents(new ActionRowBuilder().addComponents(inputMin), new ActionRowBuilder().addComponents(inputMax));
-            return await interaction.showModal(modal);
-        }
+        const modal = new ModalBuilder().setCustomId('modal_catch').setTitle('¡Atrapa al Swimmer!');
+        const campoNombre = new TextInputBuilder().setCustomId('input_nombre').setLabel("¿Cuál es el nombre de este Swimmer?").setStyle(TextInputStyle.Short).setRequired(true);
+        modal.addComponents(new ActionRowBuilder().addComponents(campoNombre));
+        return await interaction.showModal(modal);
     }
 
-    if (interaction.isModalSubmit()) {
-        if (interaction.customId === 'modal_catch') {
-            const respuesta = interaction.fields.getTextInputValue('input_nombre');
-            if (!personajeActual) return await interaction.reply({ content: "¡Alguien más lo atrapó antes!", ephemeral: true });
+    if (interaction.isModalSubmit() && interaction.customId === 'modal_catch') {
+        const respuesta = interaction.fields.getTextInputValue('input_nombre');
+        if (!personajeActual) return await interaction.reply({ content: "¡Alguien más lo atrapó antes!", ephemeral: true });
 
-            const nombreValido = respuesta.toLowerCase() === personajeActual.nombre.toLowerCase() || (personajeActual.nombre === "Hammer" && respuesta.toLowerCase() === "martillo");
-            if (nombreValido) {
-                if (!inventarios[userId]) inventarios[userId] = [];
-                inventarios[userId].push(personajeActual);
-                const atrapado = personajeActual;
-                personajeActual = null;
-                await interaction.reply(`¡Felicidades ${interaction.user}! Has atrapado a **${atrapado.nombre}** (${atrapado.raridad}).`);
-            } else {
-                await interaction.reply({ content: "¡Nombre incorrecto!", ephemeral: true });
-            }
-        }
-
-        if (interaction.customId === 'modal_limite') {
-            const nuevoVal = parseInt(interaction.fields.getTextInputValue('input_limite_mensajes'));
-            if (!isNaN(nuevoVal) && nuevoVal > 0) {
-                config.limiteMensajes = nuevoVal;
-                await interaction.reply({ content: `✅ Límite de mensajes actualizado a: **${nuevoVal}**`, ephemeral: true });
-            } else {
-                await interaction.reply({ content: "❌ Número inválido.", ephemeral: true });
-            }
-        }
-
-        if (interaction.customId === 'modal_tiempo') {
-            const tMin = parseInt(interaction.fields.getTextInputValue('input_t_min'));
-            const tMax = parseInt(interaction.fields.getTextInputValue('input_t_max'));
-            if (!isNaN(tMin) && !isNaN(tMax) && tMin >= 30 && tMax <= 36000 && tMin < tMax) {
-                config.tiempoMin = tMin;
-                config.tiempoMax = tMax;
-                await interaction.reply({ content: `✅ Tiempos actualizados: Mínimo **${tMin}s**, Máximo **${tMax}s**.`, ephemeral: true });
-            } else {
-                await interaction.reply({ content: "❌ Valores inválidos. Recuerda: Mínimo 30 segundos y máximo 10 horas (36000s).", ephemeral: true });
-            }
+        const nombreValido = respuesta.toLowerCase() === personajeActual.nombre.toLowerCase() || (personajeActual.nombre === "Hammer" && respuesta.toLowerCase() === "martillo");
+        if (nombreValido) {
+            if (!inventarios[userId]) inventarios[userId] = [];
+            inventarios[userId].push(personajeActual);
+            const atrapado = personajeActual;
+            personajeActual = null;
+            await interaction.reply(`¡Felicidades ${interaction.user}! Has atrapado a **${atrapado.nombre}** (${atrapado.raridad}).`);
+        } else {
+            await interaction.reply({ content: "¡Nombre incorrecto!", ephemeral: true });
         }
     }
 });
