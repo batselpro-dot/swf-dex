@@ -53,22 +53,25 @@ const timersTiempo = {};
 
 let tiendaActual = { items: [], proximoRestock: [], timestampProximo: Date.now() + 6 * 3600 * 1000 };
 
-function generarTiendaItems() {
+function generarTiendaSinRepetidos() {
+    const copiaPool = [...personajesSWF];
     const seleccionados = [];
     for (let i = 0; i < 3; i++) {
-        const item = personajesSWF[Math.floor(Math.random() * personajesSWF.length)];
-        seleccionados.push({ ...item, stock: Math.floor(Math.random() * 3) + 1 });
+        if (copiaPool.length === 0) break;
+        const indexAleatorio = Math.floor(Math.random() * copiaPool.length);
+        const itemElegido = copiaPool.splice(indexAleatorio, 1)[0];
+        seleccionados.push({ ...itemElegido, stock: Math.floor(Math.random() * 3) + 1 });
     }
     return seleccionados;
 }
 
-tiendaActual.items = generarTiendaItems();
-tiendaActual.proximoRestock = generarTiendaItems();
+tiendaActual.items = generarTiendaSinRepetidos();
+tiendaActual.proximoRestock = generarTiendaSinRepetidos();
 
 setInterval(() => {
     if (Date.now() >= tiendaActual.timestampProximo) {
         tiendaActual.items = tiendaActual.proximoRestock;
-        tiendaActual.proximoRestock = generarTiendaItems();
+        tiendaActual.proximoRestock = generarTiendaSinRepetidos();
         tiendaActual.timestampProximo = Date.now() + 6 * 3600 * 1000;
     }
 }, 60000);
@@ -347,8 +350,7 @@ client.on('interactionCreate', async (interaction) => {
 
             return await interaction.reply({ content: "⛏️ **¡Sesión de minería iniciada!** Haz clic en el botón de abajo hasta completar los 75 clicks.", components: [row], ephemeral: true });
         }
-
-        if (interaction.commandName === 'ruleta') {
+if (interaction.commandName === 'ruleta') {
             const ahora = Date.now();
             const ultimoUso = cooldowns.ruleta[userId] || 0;
             const cooldownRuleta = 7 * 24 * 3600 * 1000;
