@@ -51,7 +51,6 @@ const buffsSuerte = {};
 let personajeActual = null;
 const timersTiempo = {};
 
-// Sistema de Tienda con rotación cada 6 horas
 let tiendaActual = { items: [], proximoRestock: [], timestampProximo: Date.now() + 6 * 3600 * 1000 };
 
 function generarTiendaItems() {
@@ -109,32 +108,12 @@ async function lanzarSwimmerEspecifico(channel, personaje) {
     await channel.send({ embeds: [embedSpawn], components: [fila] });
 }
 
-function iniciarLoopTiempo(guildId) {
-    if (timersTiempo[guildId]) clearTimeout(timersTiempo[guildId]);
-    const config = getConfig(guildId);
-    if (config.modo !== 'tiempo') return;
-
-    const tiempoEsperaMs = Math.floor(Math.random() * (config.tiempoMax - config.tiempoMin + 1) + config.tiempoMin) * 1000;
-
-    timersTiempo[guildId] = setTimeout(async () => {
-        if (config.ultimoCanalActivo && config.modo === 'tiempo') {
-            try {
-                const canal = await client.channels.fetch(config.ultimoCanalActivo);
-                if (canal) await lanzarSwimmerEspecifico(canal, null);
-            } catch (e) {
-                console.error("Error al spawnear por tiempo:", e);
-            }
-        }
-        iniciarLoopTiempo(guildId);
-    }, tiempoEsperaMs);
-}
-
 const commands = [
     new SlashCommandBuilder().setName('inventario').setDescription('Muestra tus Swimmers atrapados'),
     new SlashCommandBuilder().setName('dex').setDescription('Muestra la lista de todos los Swimmers disponibles'),
     new SlashCommandBuilder().setName('progreso').setDescription('Muestra cuántos mensajes van para el siguiente personaje'),
+    new SlashCommandBuilder().setName('ayuda').setDescription('Muestra la lista de comandos disponibles del bot'),
     
-    // Comandos de Monedas
     new SlashCommandBuilder().setName('saldoburbujas').setDescription('Muestra tu saldo de burbujas disponibles'),
     new SlashCommandBuilder()
         .setName('regaloburbujas')
@@ -143,11 +122,9 @@ const commands = [
         .addIntegerOption(opt => opt.setName('cantidad').setDescription('Cantidad de burbujas').setRequired(true).setMinValue(1)),
     new SlashCommandBuilder().setName('recompensadiaria').setDescription('Reclama tu recompensa diaria de burbujas'),
 
-    // Comandos de Tienda
     new SlashCommandBuilder().setName('shop').setDescription('Abre la tienda limitada de Swimmers'),
     new SlashCommandBuilder().setName('nextrestock').setDescription('Muestra lo que viene en el próximo restock (Disponible a 5h o menos)'),
 
-    // Otros minijuegos
     new SlashCommandBuilder().setName('minas').setDescription('Minijuego de minería de minerales con cooldown'),
     new SlashCommandBuilder().setName('ruleta').setDescription('Gira la ruleta semanal de premios'),
     new SlashCommandBuilder()
@@ -251,6 +228,20 @@ client.on('interactionCreate', async (interaction) => {
     const config = getConfig(interaction.guild.id);
 
     if (interaction.isChatInputCommand()) {
+        if (interaction.commandName === 'ayuda') {
+            const embedAyuda = new EmbedBuilder()
+                .setTitle('📖 Menú de Ayuda - SwF-Dex')
+                .setDescription('Lista de comandos disponibles para todos los usuarios y administradores:')
+                .addFields(
+                    { name: '🫧 Economía', value: '`/saldoburbujas` - Revisa tus burbujas\n`/regaloburbujas` - Regala burbujas\n`/recompensadiaria` - Recompensa diaria' },
+                    { name: '🛒 Tienda y Colección', value: '`/shop` - Abre la tienda limitada\n`/nextrestock` - Próximo restock\n`/inventario` - Tus personajes\n`/dex` - Lista de Swimmers\n`/progreso` - Mensajes para el siguiente spawn\n`/venderswimmer` - Vende un Swimmer' },
+                    { name: '⛏️ Minijuegos', value: '`/minas` - Minería de minerales\n`/ruleta` - Giro semanal' },
+                    { name: '⚙️ Administración', value: '`/config` - Configura el bot\n`/spawnswimmer` - Spawn manual' }
+                )
+                .setColor('#0099ff');
+            return await interaction.reply({ embeds: [embedAyuda] });
+        }
+
         if (interaction.commandName === 'saldoburbujas') {
             const saldo = balances[userId] || 0;
             return await interaction.reply({ content: `🫧 Tienes **${saldo}** burbujas en tu cuenta.`, ephemeral: true });
@@ -351,11 +342,10 @@ client.on('interactionCreate', async (interaction) => {
                 new ButtonBuilder().setCustomId('btn_minar').setLabel('⛏️ ¡Minar (0/75 clicks)!').setStyle(ButtonStyle.Primary)
             );
 
-            // Guardamos sesión temporal en memoria
             client.sesionesMinas = client.sesionesMinas || {};
             client.sesionesMinas[userId] = { clicks: 0, ultimosMinerales: [] };
 
-            return await interaction.reply({ content: "⛏️ **¡Sesión de minería iniciada!** Haz clic en el botón de abajo hasta 75 veces.", components: [row], ephemeral: true });
+            return await interaction.reply({ content: "⛏️ **¡Sesión de minería iniciada!** Haz clic en el botón de abajo hasta completar los 75 clicks.", components: [row], ephemeral: true });
         }
 
         if (interaction.commandName === 'ruleta') {
@@ -454,42 +444,55 @@ client.on('interactionCreate', async (interaction) => {
 
             sesion.clicks++;
 
-            const tieneBuff = (buffsSuerte[userId] || 0) > Date.now();
-
             const minerales = [
-                { nombre: "Carbón", recompensa: 2, prob: 20 },
-                { nombre: "Cobre", recompensa: 10, prob: 10 },
-                { nombre: "Rubí", recompensa: 25, prob: 5 },
-                { nombre: "Esmeralda", recompensa: 30, prob: 4.4 },
-                { nombre: "Amatista", recompensa: 50, prob: 3 },
-                { nombre: "Bronce", recompensa: 100, prob: 2 },
-                { nombre: "Plata", recompensa: 250, prob: 1 },
-                { nombre: "Oro", recompensa: 500, prob: 0.75 },
+                { nombre: "Antimateria", recompensa: 10000, prob: 0.0000007 },
                 { nombre: "Diamante", recompensa: 1000, prob: 0.25 },
-                { nombre: "Antimateria", recompensa: 10000, prob: 0.000000067 }
+                { nombre: "Oro", recompensa: 500, prob: 0.75 },
+                { nombre: "Plata", recompensa: 250, prob: 1 },
+                { nombre: "Bronce", recompensa: 100, prob: 2 },
+                { nombre: "Amatista", recompensa: 50, prob: 3 },
+                { nombre: "Esmeralda", recompensa: 30, prob: 4.4 },
+                { nombre: "Rubí", recompensa: 25, prob: 5 },
+                { nombre: "Cobre", recompensa: 10, prob: 10 },
+                { nombre: "Carbón", recompensa: 2, prob: 20 }
             ];
 
-            // Filtrar los que no estén en los últimos 7 clics
-            const disponibles = minerales.filter(m => !sesion.ultimosMinerales.includes(m.nombre));
-            const minEncontrado = disponibles[Math.floor(Math.random() * disponibles.length)] || minerales[0];
+            let minEncontrado = null;
+            const rand = Math.random() * 100;
+            let acumulado = 0;
 
-            sesion.ultimosMinerales.push(minEncontrado.nombre);
-            if (sesion.ultimosMinerales.length > 7) sesion.ultimosMinerales.shift();
+            for (const m of minerales) {
+                acumulado += m.prob;
+                if (rand <= acumulado) {
+                    if (!sesion.ultimosMinerales.includes(m.nombre)) {
+                        minEncontrado = m;
+                        break;
+                    }
+                }
+            }
 
-            balances[userId] = (balances[userId] || 0) + minEncontrado.recompensa;
+            let mensajeResultado = `⛏️ ¡Golpe #${sesion.clicks}/75!`;
+            if (minEncontrado) {
+                sesion.ultimosMinerales.push(minEncontrado.nombre);
+                if (sesion.ultimosMinerales.length > 7) sesion.ultimosMinerales.shift();
+                balances[userId] = (balances[userId] || 0) + minEncontrado.recompensa;
+                mensajeResultado += ` Encontraste **${minEncontrado.nombre}** (+${minEncontrado.recompensa} 🫧).`;
+            } else {
+                mensajeResultado += ` No minaste nada en este golpe...`;
+            }
+
+            if (sesion.clicks >= 75) {
+                const rowFin = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId('btn_minar').setLabel('⛏️ ¡Minería Terminada!').setStyle(ButtonStyle.Secondary).setDisabled(true)
+                );
+                return await interaction.update({ content: `${mensajeResultado}\n🏁 **¡Has completado los 75 clicks de minería!**`, components: [rowFin] });
+            }
 
             const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setCustomId('btn_minar')
-                    .setLabel(`⛏️ Minar (${sesion.clicks}/75 clicks)`)
-                    .setStyle(ButtonStyle.Primary)
-                    .setDisabled(sesion.clicks >= 75)
+                new ButtonBuilder().setCustomId('btn_minar').setLabel(`⛏️ Minar (${sesion.clicks}/75 clicks)`).setStyle(ButtonStyle.Primary)
             );
 
-            return await interaction.update({ 
-                content: `⛏️ ¡Golpe #${sesion.clicks}! Encontraste **${minEncontrado.nombre}** (+${minEncontrado.recompensa} 🫧).`, 
-                components: [row] 
-            });
+            return await interaction.update({ content: mensajeResultado, components: [row] });
         }
     }
 
